@@ -10,6 +10,9 @@ namespace DestinationDiscoveryService.Models
         [BsonRepresentation(BsonType.ObjectId)]
         public string Id { get; set; }
 
+        [BsonElement("NumberOfDays")]
+        public int? NumberOfDays { get; set; }
+
         [BsonElement("Budget")]
         public decimal? Budget { get; set; }
 

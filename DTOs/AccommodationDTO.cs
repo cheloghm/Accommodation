@@ -9,5 +9,9 @@ namespace DestinationDiscoveryService.DTOs
         public string Description { get; set; }
         public decimal Price { get; set; }
         // Add more fields as per your requirement
+
+        public decimal DailyRate { get; set; }
+        public decimal LeftoverBudget { get; set; }
+        public int AdditionalDaysPossible { get; set; }
     }
 }

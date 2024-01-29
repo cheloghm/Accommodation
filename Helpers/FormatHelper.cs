@@ -1,4 +1,4 @@
-namespace DestinationDiscoveryService.Services
+namespace DestinationDiscoveryService.Helpers
 {
 
     public static class FormatHelper

@@ -19,7 +19,28 @@ namespace DestinationDiscoveryService.Services
             _httpClientFactory = httpClientFactory;
         }
 
-        public async Task<IEnumerable<AccommodationDTO>> SearchAccommodationsAsync(string query)
+        public async Task<IEnumerable<string>> SearchDestinationsAsync(string query)
+        {
+            var client = _httpClientFactory.CreateClient();
+            var requestUrl = $"https://booking-com15.p.rapidapi.com/api/v1/hotels/searchDestination?query={query}";
+
+            var request = CreateHttpRequestMessage(HttpMethod.Get, requestUrl);
+            var response = await client.SendAsync(request);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                // Handle the error, log it or throw an exception
+                return Enumerable.Empty<string>();
+            }
+
+            var body = await response.Content.ReadAsStringAsync();
+            var destinations = JsonConvert.DeserializeObject<List<Destination>>(body);
+
+            return destinations.Select(dest => dest.dest_id);
+        }
+
+
+        public async Task<IEnumerable<AccommodationDTO>> SearchAccommodationsAsync(string query, decimal? totalBudget = null, int? numberOfDays = null)
         {
             var client = _httpClientFactory.CreateClient();
             var requestUrl = $"https://booking-com15.p.rapidapi.com/api/v1/hotels/searchHotels?{query}";
@@ -27,7 +48,22 @@ namespace DestinationDiscoveryService.Services
             var request = CreateHttpRequestMessage(HttpMethod.Get, requestUrl);
             var response = await client.SendAsync(request);
 
-            return await ProcessResponse(response);
+            if (!response.IsSuccessStatusCode)
+            {
+                // Handle the error, log it or throw an exception
+                return Enumerable.Empty<AccommodationDTO>();
+            }
+
+            var body = await response.Content.ReadAsStringAsync();
+            var apiResponse = JsonConvert.DeserializeObject<ApiResponse>(body);
+
+            decimal? dailyBudget = null;
+            if (totalBudget.HasValue && numberOfDays.HasValue && numberOfDays.Value > 0)
+            {
+                dailyBudget = CalculateDailyBudget(totalBudget.Value, numberOfDays.Value);
+            }
+
+            return MapToAccommodationDTOs(apiResponse, dailyBudget, numberOfDays);
         }
 
         public async Task<IEnumerable<AccommodationDTO>> SearchHotelsByCoordinatesAsync(double latitude, double longitude, string arrivalDate, string departureDate, int adults, string childrenAge, int roomQty, string languageCode = "en-us", string currencyCode = "EUR")
@@ -35,19 +71,18 @@ namespace DestinationDiscoveryService.Services
             var query = BuildCoordinatesQuery(latitude, longitude, arrivalDate, departureDate, adults, childrenAge, roomQty, languageCode, currencyCode);
             return await SearchAccommodationsAsync(query);
         }
-        
+
         public async Task<HotelDetailsDTO> GetHotelDetailsAsync(int hotelId, string arrivalDate, string departureDate, int adults, string childrenAge, int roomQty, string languageCode = "en-us", string currencyCode = "EUR")
         {
-            var query = // build your query string here;
+            var query = "";// build your query string here;
             var requestUrl = $"https://booking-com15.p.rapidapi.com/api/v1/hotels/getHotelDetails?{query}";
 
             var request = CreateHttpRequestMessage(HttpMethod.Get, requestUrl);
             var response = await _httpClientFactory.CreateClient().SendAsync(request);
-            
+
             response.EnsureSuccessStatusCode();
             var responseBody = await response.Content.ReadAsStringAsync();
-            
-            // Deserialize responseBody to HotelDetailsDTO and return
+
             return JsonConvert.DeserializeObject<HotelDetailsDTO>(responseBody);
         }
 
@@ -67,33 +102,64 @@ namespace DestinationDiscoveryService.Services
             return request;
         }
 
-        private async Task<IEnumerable<AccommodationDTO>> ProcessResponse(HttpResponseMessage response)
+        public decimal CalculateDailyBudget(decimal totalBudget, int numberOfDays)
+        {
+            return Math.Ceiling(totalBudget / numberOfDays);
+        }
+
+        private async Task<IEnumerable<AccommodationDTO>> ProcessResponse(HttpResponseMessage response, decimal? dailyBudget = null, int? numberOfDays = null)
         {
             response.EnsureSuccessStatusCode();
             var body = await response.Content.ReadAsStringAsync();
             var apiResponse = JsonConvert.DeserializeObject<ApiResponse>(body);
 
-            return MapToAccommodationDTOs(apiResponse);
+            return MapToAccommodationDTOs(apiResponse, dailyBudget, numberOfDays);
         }
 
-        private IEnumerable<AccommodationDTO> MapToAccommodationDTOs(ApiResponse apiResponse)
+        private IEnumerable<AccommodationDTO> MapToAccommodationDTOs(ApiResponse apiResponse, decimal? dailyBudget, int? numberOfDays)
         {
-            return apiResponse.Data.Hotels.Select(hotel => new AccommodationDTO
+            if (apiResponse?.Data?.Hotels == null || numberOfDays == null)
             {
-                Name = hotel.Property.Name,
-                Address = hotel.AccessibilityLabel.Split('\n').Last(),
-                Rating = hotel.Property.ReviewScore,
-                PhotoUrls = hotel.Property.PhotoUrls,
-                Price = hotel.Property.PriceBreakdown.GrossPrice.Value,
-                Description = hotel.AccessibilityLabel
-                // Map other fields as necessary
-            }).ToList();
+                return Enumerable.Empty<AccommodationDTO>();
+            }
+
+            int days = numberOfDays.Value;
+            decimal minBudget = dailyBudget.HasValue ? dailyBudget.Value / 2 : 0;
+            decimal maxBudget = dailyBudget ?? decimal.MaxValue;
+
+            return apiResponse.Data.Hotels.Select(hotel =>
+            {
+                decimal grossPrice = hotel.Property.PriceBreakdown.GrossPrice.Value;
+                decimal dailyRate = grossPrice / days;
+
+                if (dailyRate < minBudget || dailyRate > maxBudget)
+                {
+                    return null; // Skip hotels outside the budget range
+                }
+
+                decimal leftoverBudget = dailyBudget.Value - dailyRate;
+                int additionalDaysPossible = (int)(leftoverBudget / dailyRate);
+
+                return new AccommodationDTO
+                {
+                    Name = hotel.Property.Name,
+                    Address = hotel.AccessibilityLabel.Split('\n').LastOrDefault(),
+                    Rating = hotel.Property.ReviewScore,
+                    PhotoUrls = hotel.Property.PhotoUrls ?? new List<string>(),
+                    Price = grossPrice,
+                    DailyRate = dailyRate,
+                    LeftoverBudget = leftoverBudget,
+                    AdditionalDaysPossible = additionalDaysPossible,
+                    Description = hotel.AccessibilityLabel
+                };
+            })
+            .Where(dto => dto.DailyRate <= (dailyBudget ?? dto.DailyRate))
+            .ToList();
         }
+
 
         private string BuildCoordinatesQuery(double latitude, double longitude, string arrivalDate, string departureDate, int adults, string childrenAge, int roomQty, string languageCode, string currencyCode)
         {
-            // Build the query string for search by coordinates
-            // Include latitude, longitude, and other parameters as needed
             return $"latitude={latitude}&longitude={longitude}&arrivalDate={arrivalDate}&departureDate={departureDate}&adults={adults}&childrenAge={childrenAge}&roomQty={roomQty}&languageCode={languageCode}&currencyCode={currencyCode}";
         }
     }
