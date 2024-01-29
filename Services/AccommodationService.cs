@@ -23,22 +23,19 @@ namespace DestinationDiscoveryService.Services
         {
             var client = _httpClientFactory.CreateClient();
             var requestUrl = $"https://booking-com15.p.rapidapi.com/api/v1/hotels/searchDestination?query={query}";
-
             var request = CreateHttpRequestMessage(HttpMethod.Get, requestUrl);
             var response = await client.SendAsync(request);
 
             if (!response.IsSuccessStatusCode)
             {
-                // Handle the error, log it or throw an exception
                 return Enumerable.Empty<string>();
             }
 
             var body = await response.Content.ReadAsStringAsync();
-            var destinations = JsonConvert.DeserializeObject<List<Destination>>(body);
+            var destinationResponse = JsonConvert.DeserializeObject<DestinationResponse>(body);
 
-            return destinations.Select(dest => dest.dest_id);
+            return destinationResponse.Data.Select(d => d.Dest_id);
         }
-
 
         public async Task<IEnumerable<AccommodationDTO>> SearchAccommodationsAsync(string query, decimal? totalBudget = null, int? numberOfDays = null)
         {
