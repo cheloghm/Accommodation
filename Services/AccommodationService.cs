@@ -13,18 +13,78 @@ namespace DestinationDiscoveryService.Services
     {
         private readonly IHttpClientFactory _httpClientFactory;
         private readonly string _apiKey = "b60759a2c7msh02abe0a3b0eb721p18b2aajsnd9514590a7fd"; // Store this securely
+        private readonly string _baseApiUrl = "https://booking-com15.p.rapidapi.com";
 
         public AccommodationService(IHttpClientFactory httpClientFactory)
         {
             _httpClientFactory = httpClientFactory;
         }
 
-        public async Task<IEnumerable<string>> SearchDestinationsAsync(string query)
+        private string BuildRequestUrl(string endpoint, string queryParams)
+        {
+            return $"{_baseApiUrl}/api/v1/hotels/{endpoint}?{queryParams}";
+        }
+
+        private async Task<HttpResponseMessage> SendHttpRequestAsync(string url)
         {
             var client = _httpClientFactory.CreateClient();
-            var requestUrl = $"https://booking-com15.p.rapidapi.com/api/v1/hotels/searchDestination?query={query}";
-            var request = CreateHttpRequestMessage(HttpMethod.Get, requestUrl);
-            var response = await client.SendAsync(request);
+            var request = new HttpRequestMessage
+            {
+                Method = HttpMethod.Get,
+                RequestUri = new Uri(url),
+                Headers =
+                {
+                    { "X-RapidAPI-Key", _apiKey },
+                    { "X-RapidAPI-Host", "booking-com15.p.rapidapi.com" },
+                },
+            };
+
+            return await client.SendAsync(request);
+        }
+
+        public async Task<IEnumerable<LanguageDTO>> GetLanguagesAsync()
+        {
+            var url = BuildRequestUrl("meta/getLanguages", "");
+            var response = await SendHttpRequestAsync(url);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                return Enumerable.Empty<LanguageDTO>();
+            }
+
+            var body = await response.Content.ReadAsStringAsync();
+            var result = JsonConvert.DeserializeObject<LanguageResponse>(body);
+            return result.Data.Select(l => new LanguageDTO
+            {
+                Name = l.Name,
+                Code = l.Code
+            });
+        }
+
+        public async Task<IEnumerable<CurrencyDTO>> GetCurrenciesAsync()
+        {
+            var url = BuildRequestUrl("meta/getCurrency", "");
+            var response = await SendHttpRequestAsync(url);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                return Enumerable.Empty<CurrencyDTO>();
+            }
+
+            var body = await response.Content.ReadAsStringAsync();
+            var result = JsonConvert.DeserializeObject<CurrencyResponse>(body);
+            return result.Data.Select(c => new CurrencyDTO
+            {
+                Name = c.Name,
+                Code = c.Code,
+                Symbol = c.Symbol
+            });
+        }
+
+        public async Task<IEnumerable<string>> SearchDestinationsAsync(string query)
+        {
+            var url = BuildRequestUrl("searchDestination", $"query={query}");
+            var response = await SendHttpRequestAsync(url);
 
             if (!response.IsSuccessStatusCode)
             {
@@ -33,17 +93,13 @@ namespace DestinationDiscoveryService.Services
 
             var body = await response.Content.ReadAsStringAsync();
             var destinationResponse = JsonConvert.DeserializeObject<DestinationResponse>(body);
-
-            return destinationResponse.Data.Select(d => d.Dest_id);
+            return destinationResponse.Data.Select(d => d.Dest_id); // Access Dest_id directly
         }
 
         public async Task<IEnumerable<AccommodationDTO>> SearchAccommodationsAsync(string query, decimal? totalBudget = null, int? numberOfDays = null)
         {
-            var client = _httpClientFactory.CreateClient();
-            var requestUrl = $"https://booking-com15.p.rapidapi.com/api/v1/hotels/searchHotels?{query}";
-
-            var request = CreateHttpRequestMessage(HttpMethod.Get, requestUrl);
-            var response = await client.SendAsync(request);
+            var url = BuildRequestUrl("searchHotels", $"query={query}");
+            var response = await SendHttpRequestAsync(url);
 
             if (!response.IsSuccessStatusCode)
             {
@@ -72,31 +128,13 @@ namespace DestinationDiscoveryService.Services
         public async Task<HotelDetailsDTO> GetHotelDetailsAsync(int hotelId, string arrivalDate, string departureDate, int adults, string childrenAge, int roomQty, string languageCode = "en-us", string currencyCode = "EUR")
         {
             var query = "";// build your query string here;
-            var requestUrl = $"https://booking-com15.p.rapidapi.com/api/v1/hotels/getHotelDetails?{query}";
-
-            var request = CreateHttpRequestMessage(HttpMethod.Get, requestUrl);
-            var response = await _httpClientFactory.CreateClient().SendAsync(request);
+            var url = BuildRequestUrl("getHotelDetails", $"query={query}");
+            var response = await SendHttpRequestAsync(url);
 
             response.EnsureSuccessStatusCode();
             var responseBody = await response.Content.ReadAsStringAsync();
 
             return JsonConvert.DeserializeObject<HotelDetailsDTO>(responseBody);
-        }
-
-        private HttpRequestMessage CreateHttpRequestMessage(HttpMethod method, string requestUrl)
-        {
-            var request = new HttpRequestMessage
-            {
-                Method = method,
-                RequestUri = new Uri(requestUrl),
-                Headers =
-                {
-                    { "X-RapidAPI-Key", _apiKey },
-                    { "X-RapidAPI-Host", "booking-com15.p.rapidapi.com" },
-                },
-            };
-
-            return request;
         }
 
         public decimal CalculateDailyBudget(decimal totalBudget, int numberOfDays)

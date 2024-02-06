@@ -14,6 +14,20 @@ public class AccommodationController : ControllerBase
     {
         _accommodationService = accommodationService;
     }
+    
+    [HttpGet("languages")]
+    public async Task<IActionResult> GetLanguages()
+    {
+        var languages = await _accommodationService.GetLanguagesAsync();
+        return Ok(languages);
+    }
+
+    [HttpGet("currencies")]
+    public async Task<IActionResult> GetCurrencies()
+    {
+        var currencies = await _accommodationService.GetCurrenciesAsync();
+        return Ok(currencies);
+    }
 
     // Example endpoint: /Accommodation?query=<query-parameters>
     [HttpGet]
