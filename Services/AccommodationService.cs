@@ -133,12 +133,6 @@ namespace DestinationDiscoveryService.Services
             return MapToAccommodationDTOs(apiResponse, dailyBudget, numberOfDays);
         }
 
-        public async Task<IEnumerable<AccommodationDTO>> SearchHotelsByCoordinatesAsync(double latitude, double longitude, string arrivalDate, string departureDate, int adults, string childrenAge, int roomQty, string languageCode = "en-us", string currencyCode = "EUR")
-        {
-            var query = BuildCoordinatesQuery(latitude, longitude, arrivalDate, departureDate, adults, childrenAge, roomQty, languageCode, currencyCode);
-            return await SearchAccommodationsAsync(query);
-        }
-
         public async Task<HotelDetailsDTO> GetHotelDetailsAsync(int hotelId, string arrivalDate, string departureDate, int adults, string childrenAge, int roomQty, string languageCode = "en-us", string currencyCode = "EUR")
         {
             var query = "";// build your query string here;
@@ -206,10 +200,5 @@ namespace DestinationDiscoveryService.Services
             .ToList();
         }
 
-
-        private string BuildCoordinatesQuery(double latitude, double longitude, string arrivalDate, string departureDate, int adults, string childrenAge, int roomQty, string languageCode, string currencyCode)
-        {
-            return $"latitude={latitude}&longitude={longitude}&arrivalDate={arrivalDate}&departureDate={departureDate}&adults={adults}&childrenAge={childrenAge}&roomQty={roomQty}&languageCode={languageCode}&currencyCode={currencyCode}";
-        }
     }
 }
