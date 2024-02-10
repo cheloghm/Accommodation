@@ -81,6 +81,20 @@ namespace DestinationDiscoveryService.Services
             });
         }
 
+        public async Task<ExchangeRateResponse> GetExchangeRatesAsync(string baseCurrency = "USD")
+        {
+            var url = BuildRequestUrl("meta/getExchangeRates", $"base_currency={baseCurrency}");
+            var response = await SendHttpRequestAsync(url);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                throw new HttpRequestException($"Error fetching exchange rates: {response.ReasonPhrase}");
+            }
+
+            var body = await response.Content.ReadAsStringAsync();
+            return JsonConvert.DeserializeObject<ExchangeRateResponse>(body);
+        }
+
         public async Task<IEnumerable<string>> SearchDestinationsAsync(string query)
         {
             var url = BuildRequestUrl("searchDestination", $"query={query}");
